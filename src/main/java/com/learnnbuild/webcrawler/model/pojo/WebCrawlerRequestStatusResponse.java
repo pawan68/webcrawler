@@ -1,7 +1,5 @@
 package com.learnnbuild.webcrawler.model.pojo;
 
-import org.springframework.util.StringUtils;
-
 public class WebCrawlerRequestStatusResponse {
     private RequestStatus requestStatus;
 

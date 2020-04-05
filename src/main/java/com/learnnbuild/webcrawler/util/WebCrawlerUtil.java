@@ -1,10 +1,7 @@
 package com.learnnbuild.webcrawler.util;
 
-import com.learnnbuild.webcrawler.entity.WebCrawlerRequestStatusEntity;
 import com.learnnbuild.webcrawler.kafka.Payload;
 import com.learnnbuild.webcrawler.model.pojo.Detail;
-import com.learnnbuild.webcrawler.model.pojo.RequestStatus;
-import com.learnnbuild.webcrawler.model.pojo.WebCrawlerRequestStatus;
 import com.learnnbuild.webcrawler.model.pojo.WebCrawlerSubmitRequest;
 import com.learnnbuild.webcrawler.repository.WebCrawlerRequestStatusRepository;
 import org.jsoup.nodes.Document;
@@ -13,7 +10,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 
-import java.util.Optional;
 import java.util.UUID;
 
 @Component

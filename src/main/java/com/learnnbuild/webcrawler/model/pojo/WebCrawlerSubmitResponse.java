@@ -2,7 +2,7 @@ package com.learnnbuild.webcrawler.model.pojo;
 
 public class WebCrawlerSubmitResponse {
 
-    String acknowledgementToken;
+    private String acknowledgementToken;
 
     public String getAcknowledgementToken() {
         return acknowledgementToken;
