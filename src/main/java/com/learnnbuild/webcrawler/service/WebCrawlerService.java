@@ -1,9 +1,9 @@
 package com.learnnbuild.webcrawler.service;
 
-import com.learnnbuild.webcrawler.Producer;
 import com.learnnbuild.webcrawler.entity.WebCrawlerRequestStatusEntity;
 import com.learnnbuild.webcrawler.entity.WebCrawlerResponseEntity;
 import com.learnnbuild.webcrawler.kafka.Payload;
+import com.learnnbuild.webcrawler.kafka.Producer;
 import com.learnnbuild.webcrawler.model.pojo.*;
 import com.learnnbuild.webcrawler.repository.WebCrawlerRequestStatusRepository;
 import com.learnnbuild.webcrawler.repository.WebCrawlerResponseRepository;
@@ -22,7 +22,6 @@ import org.springframework.util.StringUtils;
 
 import java.io.IOException;
 import java.util.HashSet;
-import java.util.Optional;
 
 import static com.learnnbuild.webcrawler.util.WebCrawlerUtil.*;
 
@@ -30,14 +29,6 @@ import static com.learnnbuild.webcrawler.util.WebCrawlerUtil.*;
 public class WebCrawlerService {
 
     private HashSet<String> links;
-
-    public HashSet<String> getLinks() {
-        return links;
-    }
-
-    public void setLinks(HashSet<String> links) {
-        this.links = links;
-    }
 
     @Autowired
     private WebCrawlerRequestStatusRepository webCrawlerRequestStatusRepository;
@@ -48,21 +39,35 @@ public class WebCrawlerService {
     @Autowired
     private Producer producer;
 
+    @Autowired
+    private WebCrawlerUtil webCrawlerUtil;
+
+    @Autowired
+    private PersistenceService persistenceService;
+
     private static final Logger LOGGER = LoggerFactory.getLogger(WebCrawlerService.class);
+
+    public HashSet<String> getLinks() {
+        return links;
+    }
+
+    public void setLinks(HashSet<String> links) {
+        this.links = links;
+    }
 
     public WebCrawlerService() {
         this.links = new HashSet<>();
     }
 
     public void getWebPagesInfo(String URL, int depth, WebCrawlerResponseEntity webCrawlerResponse) {
-        if(!links.contains(URL) && depth != 0 && !StringUtils.isEmpty(URL)) {
-            System.out.println("Fetching URL: " + URL + " depth: " + depth);
+        if (!links.contains(URL) && depth != 0 && !StringUtils.isEmpty(URL)) {
+            LOGGER.info("Fetching URL: {} depth: {} ", URL, depth);
             try {
                 links.add(URL);
                 Document document = Jsoup.connect(URL).get();
                 Elements linksOnWebPage = getPageLinks(document);
                 Elements imageLinks = getImageLinks(document);
-                Detail detail = getDetail(linksOnWebPage, imageLinks, document);
+                Detail detail = getDetail(imageLinks, document);
                 webCrawlerResponse.getDetails().add(detail);
                 webCrawlerResponse.setTotalImages(webCrawlerResponse.getTotalImages() + imageLinks.size());
                 webCrawlerResponse.setTotalLinks(webCrawlerResponse.getTotalLinks() + linksOnWebPage.size());
@@ -76,77 +81,66 @@ public class WebCrawlerService {
         }
     }
 
-    public ResponseEntity<WebCrawlerSubmitResponse> process(WebCrawlerSubmitRequest request) {
+    public ResponseEntity<Object> process(WebCrawlerSubmitRequest request) {
         Payload payload = null;
         try {
             payload = WebCrawlerUtil.generatePayload(request);
             producer.send(payload);
-            updateWebCrawlerRequestStatus(payload.getUniqueIdentifier(), RequestStatus.SUBMITTED);
+            webCrawlerUtil.updateWebCrawlerRequestStatus(payload.getUniqueIdentifier(), RequestStatus.SUBMITTED);
             return new ResponseEntity<>(new WebCrawlerSubmitResponse(payload.getUniqueIdentifier()), HttpStatus.OK);
 
         } catch (Exception e) {
-            if(payload != null) {
-                updateWebCrawlerRequestStatus(payload.getUniqueIdentifier(), RequestStatus.FAILED);
+            if (payload != null) {
+                webCrawlerUtil.updateWebCrawlerRequestStatus(payload.getUniqueIdentifier(), RequestStatus.FAILED);
             }
         }
-        return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        ErrorResponse errorResponse = webCrawlerUtil.getErrorResponse("Error occured while processing the submit request!");
+        return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
     }
 
-    public ResponseEntity<WebCrawlerRequestStatusResponse> process(WebCrawlerRequest request) {
+    public ResponseEntity<Object> process(WebCrawlerRequest request) {
         try {
-            WebCrawlerRequestStatusEntity webCrawlerRequestStatus = getWebCrawlerRequestStatus(request.getUniqueToken());
-            if(webCrawlerRequestStatus != null)
+            WebCrawlerRequestStatusEntity webCrawlerRequestStatus = persistenceService.findCrawlerRequestStatusById(request.getUniqueToken());
+            if (webCrawlerRequestStatus != null)
                 return new ResponseEntity<>(new WebCrawlerRequestStatusResponse(webCrawlerRequestStatus.getStatus()), HttpStatus.OK);
         } catch (Exception e) {
             LOGGER.error("Exception occured while processing status request", e);
         }
-        return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        ErrorResponse errorResponse = webCrawlerUtil.getErrorResponse("Response matching with unique token does not exist! ");
+        return new ResponseEntity<>(errorResponse, HttpStatus.NOT_FOUND);
     }
 
-    private WebCrawlerRequestStatusEntity getWebCrawlerRequestStatus(String uniqueToken) {
-        try {
-            Optional<WebCrawlerRequestStatusEntity> statusRequest = webCrawlerRequestStatusRepository.findById(uniqueToken);
-            return statusRequest.orElse(null);
-        } catch (Exception e) {
-            LOGGER.error("Exception occured while fetching status from redis ", e);
-        }
-        return null;
-    }
-
-    public void updateWebCrawlerRequestStatus(String uniqueToken, RequestStatus requestStatus) {
-        if(StringUtils.isEmpty(uniqueToken))
-            return;
-        try {
-            Optional<WebCrawlerRequestStatusEntity> statusRequest = webCrawlerRequestStatusRepository.findById(uniqueToken);
-            if (statusRequest.isPresent()) {
-                WebCrawlerRequestStatusEntity webCrawlerRequestStatusEntity = statusRequest.get();
-                webCrawlerRequestStatusEntity.setStatus(requestStatus);
-                webCrawlerRequestStatusEntity.setUniqueToken(uniqueToken);
-                webCrawlerRequestStatusRepository.save(webCrawlerRequestStatusEntity);
-            } else {
-                WebCrawlerRequestStatusEntity webCrawlerRequestStatusEntity = new WebCrawlerRequestStatusEntity(requestStatus,
-                        uniqueToken);
-                webCrawlerRequestStatusRepository.save(webCrawlerRequestStatusEntity);
-            }
-        } catch (Exception e) {
-            LOGGER.error("Error occured while updating record in redis ", e);
-        }
-    }
-
-    public ResponseEntity<WebCrawlerResponse> getCrawledResponse(WebCrawlerRequest request) {
+    public ResponseEntity<Object> getCrawledResponse(WebCrawlerRequest request) {
         try {
             String uniqueToken = request.getUniqueToken();
-            Optional<WebCrawlerResponseEntity> webCrawlerResponseFetched = webCrawlerResponseRepository.findById(uniqueToken);
+            WebCrawlerResponseEntity webCrawlerResponseFetched = persistenceService.findCrawlerResponseById(uniqueToken);
             WebCrawlerResponse response = null;
-            if (webCrawlerResponseFetched.isPresent()) {
-                WebCrawlerResponseEntity webCrawlerResponseEntity = webCrawlerResponseFetched.get();
-                response = new WebCrawlerResponse(webCrawlerResponseEntity.getTotalLinks(), webCrawlerResponseEntity.getTotalImages(), webCrawlerResponseEntity.getDetails());
+            if (webCrawlerResponseFetched != null) {
+                response = new WebCrawlerResponse(webCrawlerResponseFetched.getTotalLinks(), webCrawlerResponseFetched.getTotalImages(), webCrawlerResponseFetched.getDetails());
             }
             if (response != null)
                 return new ResponseEntity<>(response, HttpStatus.OK);
         } catch (Exception e) {
             LOGGER.error("Exception occured while fetching crawled response ", e);
         }
-        return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+        ErrorResponse errorResponse = webCrawlerUtil.getErrorResponse("Response matching with given uniqueToken does not exist!");
+        return new ResponseEntity<>(errorResponse, HttpStatus.NOT_FOUND);
+    }
+
+    public void processMessage(Payload payload) {
+        try {
+            WebCrawlerResponseEntity responseEntity = new WebCrawlerResponseEntity();
+            webCrawlerUtil.updateWebCrawlerRequestStatus(payload.getUniqueIdentifier(), RequestStatus.IN_PROCESS);
+            responseEntity.setUniqueToken(payload.getUniqueIdentifier());
+            getWebPagesInfo(payload.getURL(), payload.getDepth(), responseEntity);
+            responseEntity.setTotalLinks(responseEntity.getDetails().size());
+            setLinks(new HashSet<>());
+            if (!responseEntity.isEmpty()) {
+                persistenceService.saveCrawlerResponse(responseEntity);
+            }
+            webCrawlerUtil.updateWebCrawlerRequestStatus(payload.getUniqueIdentifier(), RequestStatus.PROCESSED);
+        } catch (Exception e) {
+            LOGGER.error("Error occured while reading the kafka message. ", e);
+        }
     }
 }

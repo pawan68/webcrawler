@@ -4,8 +4,10 @@ import com.learnnbuild.webcrawler.model.pojo.RequestStatus;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.redis.core.RedisHash;
 
+import java.io.Serializable;
+
 @RedisHash("WebCrawlerRequestStatusEntity")
-public class WebCrawlerRequestStatusEntity {
+public class WebCrawlerRequestStatusEntity  implements Serializable {
 
     @Id
     private String uniqueToken;

@@ -6,6 +6,7 @@ public class Detail {
     private Integer imageCount;
 
     public Detail() {
+        this.imageCount = 0;
     }
 
     public Detail(String pageTitle, String pageLink, Integer imageCount) {

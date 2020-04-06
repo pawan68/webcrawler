@@ -6,7 +6,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 
 public class RedisConfig {
     @Bean
-    JedisConnectionFactory jedisConnectionFactory() {
+    private JedisConnectionFactory jedisConnectionFactory() {
         return new JedisConnectionFactory();
     }
 

@@ -1,6 +1,6 @@
 package com.learnnbuild.webcrawler.configuration;
 
-import com.learnnbuild.webcrawler.Producer;
+import com.learnnbuild.webcrawler.kafka.Producer;
 import com.learnnbuild.webcrawler.kafka.Payload;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringSerializer;
